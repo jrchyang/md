@@ -6,13 +6,20 @@
  *
  * Bcache mostly works with cache sets, cache devices, and backing devices.
  *
+ * bcache主要通过缓存集、缓存设备和备份设备工作。
+ *
  * Support for multiple cache devices hasn't quite been finished off yet, but
  * it's about 95% plumbed through. A cache set and its cache devices is sort of
  * like a md raid array and its component devices. Most of the code doesn't care
  * about individual cache devices, the main abstraction is the cache set.
  *
+ * 支持多个缓存设备的功能还没完全实现，但已经完成95%了。缓存集和它的缓存设备类似于md raid阵列
+ * 和它的成员磁盘。大部分代码并不关心独立的缓存设备，主要的抽象还是缓存集。
+ *
  * Multiple cache devices is intended to give us the ability to mirror dirty
  * cached data and metadata, without mirroring clean cached data.
+ *
+ * 多个缓存设备为了实现镜像脏的缓存数据和元数据功能，不镜像干净的缓存数据。
  *
  * Backing devices are different, in that they have a lifetime independent of a
  * cache set. When you register a newly formatted backing device it'll come up
@@ -20,7 +27,13 @@
  * a cache set at runtime - while it's mounted and in use. Detaching implicitly
  * invalidates any cached data for that backing device.
  *
+ * 备份设备与缓存设备不同，它有独立于缓存集的生命周期。当你注册一个刚刚格式化的备份设备时，
+ * 它以透传模式上线，之后你可以从一个正在运行的缓存集上挂载或分离该备份设备，尽管缓存集正在
+ * 被使用。分离默认会使该备份设备的缓存数据失效。
+ *
  * A cache set can have multiple (many) backing devices attached to it.
+ *
+ * 一个缓存集可以挂载多个备份设备。
  *
  * There's also flash only volumes - this is the reason for the distinction
  * between struct cached_dev and struct bcache_device. A flash only volume
@@ -28,8 +41,15 @@
  * "cached" data is always dirty. The end result is that we get thin
  * provisioning with very little additional code.
  *
+ * 还有闪存卷 - 这是 struct cached_dev 和 struct bcache_device 区别的原因。
+ * 闪存卷的工作方式很像一个有备份设备的bcache设备，只不过其缓存的数据永远是脏的。
+ * 最终结果是我们只需要一点点额外的代码就可以得到瘦分区功能。
+ *
  * Flash only volumes work but they're not production ready because the moving
  * garbage collector needs more work. More on that later.
+ *
+ * 闪存卷已经可以工作了，但是由于移动垃圾回收还需要更多的工作，因此还不能用于生产环境。
+ * 稍后再详细介绍。
  *
  * BUCKETS/ALLOCATION:
  *
@@ -38,19 +58,32 @@
  * efficient way of deleting things from the cache so we can write new things to
  * it.
  *
+ * bcache被设计为主要用来做缓存的，这意味着所有可用空间都被分配是常规操作。因此，
+ * 我们需要一种高效的方式从缓存中删除数据，以便新的数据可以写入。
+ *
  * To do this, we first divide the cache device up into buckets. A bucket is the
  * unit of allocation; they're typically around 1 mb - anywhere from 128k to 2M+
  * works efficiently.
+ *
+ * 为了实现这个需求，首先我们将缓存设备切分成bucket。bucket是分配的空间的单位，
+ * 通常为1M左右，从128K到2M都可以高效的工作。
  *
  * Each bucket has a 16 bit priority, and an 8 bit generation associated with
  * it. The gens and priorities for all the buckets are stored contiguously and
  * packed on disk (in a linked list of buckets - aside from the superblock, all
  * of bcache's metadata is stored in buckets).
  *
+ * 每个bucket有一个16位的表示优先级的成员，一个8位的表示生成号的成员。所有bucket的生成号
+ * 和优先级连续并打包地存储在磁盘上（bucket以链表方式链接 - 除了超块外，bcache的所有元数据
+ * 都存储在bucket中）。
+ *
  * The priority is used to implement an LRU. We reset a bucket's priority when
  * we allocate it or on cache it, and every so often we decrement the priority
  * of each bucket. It could be used to implement something more sophisticated,
  * if anyone ever gets around to it.
+ *
+ * priority成员用来实现LRU功能。当我们分配或缓存一个bucket时，我们会重置它的优先级，
+ * 并且我们会经常降低每个bucket的优先级。如果有人愿意，它可以用来实现更复杂的东西。
  *
  * The generation is used for invalidating buckets. Each pointer also has an 8
  * bit generation embedded in it; for a pointer to be considered valid, its gen
@@ -58,68 +91,113 @@
  * we have to do is increment its gen (and write its new gen to disk; we batch
  * this up).
  *
+ * generation成员用来判断bucket的有效性（使bucket无效）。每个指针中还嵌入了一个8位的生成号。
+ * 为了使指针被认为是有效的，它的生成号必须与它指向的bucket的生成号匹配。因此，重用一个bucket
+ * 只需要增加它的生成号即可（并且持久化到磁盘上；我们通过批量方式操作）。
+ *
  * Bcache is entirely COW - we never write twice to a bucket, even buckets that
  * contain metadata (including btree nodes).
+ *
+ * bcache是完完全全写时复制的 - 一个bucket从不写两次，即使它包含元数据（包括btree节点）。
  *
  * THE BTREE:
  *
  * Bcache is in large part design around the btree.
  *
+ * bcache的大部分设计都是围绕btree进行的。
+ *
  * At a high level, the btree is just an index of key -> ptr tuples.
+ *
+ * 从较高层次的抽象来看，btree就是 key -> ptr 元组的索引。
  *
  * Keys represent extents, and thus have a size field. Keys also have a variable
  * number of pointers attached to them (potentially zero, which is handy for
  * invalidating the cache).
+ *
+ * keys表示extents，因此具有表示大小的字段。keys还附带了可变数量的指针（潜在的，零表示缓存无效）。
  *
  * The key itself is an inode:offset pair. The inode number corresponds to a
  * backing device or a flash only volume. The offset is the ending offset of the
  * extent within the inode - not the starting offset; this makes lookups
  * slightly more convenient.
  *
+ * key本身是 inode:offset 对。inode编号对应于备份设备或闪存卷。offset是extent在inode内的
+ * 结束位置 - 不是起始位置；这使得查找稍微方便些。
+ *
  * Pointers contain the cache device id, the offset on that device, and an 8 bit
  * generation number. More on the gen later.
+ *
+ * 指针包含缓存设备ID，相对于该缓存设备的偏移和一个8位的生成号。详细信息在生成号中说明。
  *
  * Index lookups are not fully abstracted - cache lookups in particular are
  * still somewhat mixed in with the btree code, but things are headed in that
  * direction.
  *
+ * 索引查找并不是完全抽象的 - 特别是缓存查找仍然与btree代码有一定的混合，但事情正朝着
+ * 这个方向发展。
+ *
  * Updates are fairly well abstracted, though. There are two different ways of
  * updating the btree; insert and replace.
+ *
+ * 不过，更新是抽象完全的。有两种方式更新btree：插入和替换
  *
  * BTREE_INSERT will just take a list of keys and insert them into the btree -
  * overwriting (possibly only partially) any extents they overlap with. This is
  * used to update the index after a write.
+ *
+ * BTREE_INSERT将只获取一个key列表并将它们插入到btree中 - 覆盖（可能只覆盖一部分）
+ * 任何与它们重叠的extents。这用于在写入完成后更新索引。
  *
  * BTREE_REPLACE is really cmpxchg(); it inserts a key into the btree iff it is
  * overwriting a key that matches another given key. This is used for inserting
  * data into the cache after a cache miss, and for background writeback, and for
  * the moving garbage collector.
  *
+ * BTREE_REPLACE实际上是cmpchg()；它在btree中插入一个键，如果它正在覆盖与另一个给定键
+ * 匹配的键。这用于在缓存未命中后将数据插入缓存、后台回写以及移动垃圾回收器。
+ *
  * There is no "delete" operation; deleting things from the index is
  * accomplished by either by invalidating pointers (by incrementing a bucket's
  * gen) or by inserting a key with 0 pointers - which will overwrite anything
  * previously present at that location in the index.
  *
+ * 没有 delete 操作；从索引中删除东西是通过使指针无效（增加bucket的生成号）或插入0指针的
+ * key - 这将覆盖索引中该位置先前存在的任何内容。
+ *
  * This means that there are always stale/invalid keys in the btree. They're
  * filtered out by the code that iterates through a btree node, and removed when
  * a btree node is rewritten.
+ *
+ * 这意味着btree中总是有过时/无效的键。通过迭代器遍历时会被过滤掉，当重写btree节点时被删除。
  *
  * BTREE NODES:
  *
  * Our unit of allocation is a bucket, and we we can't arbitrarily allocate and
  * free smaller than a bucket - so, that's how big our btree nodes are.
  *
+ * 我们的分配单位是bucket，我们不能任意分配和释放比bucket更小的单位 - 所以，这也是我们
+ * 的btree节点的大小。
+ *
  * (If buckets are really big we'll only use part of the bucket for a btree node
  * - no less than 1/4th - but a bucket still contains no more than a single
  * btree node. I'd actually like to change this, but for now we rely on the
  * bucket's gen for deleting btree nodes when we rewrite/split a node.)
  *
+ * （如果bucket真的很大，我们将只为一个btree节点使用部分bucket - 不少于1/4 - 但bucket
+ * 仍然只包含一个btree节点。我实际上想改变这一点，但现在我们依赖于bucket的gen在重写/拆分
+ * 节点时删除btree节点。
+ *
  * Anyways, btree nodes are big - big enough to be inefficient with a textbook
  * btree implementation.
+ *
+ * 无论如何，btree节点很大 - 大到足以使教科书式的btree实现效率低下。
  *
  * The way this is solved is that btree nodes are internally log structured; we
  * can append new keys to an existing btree node without rewriting it. This
  * means each set of keys we write is sorted, but the node is not.
+ *
+ * 解决这一问题的方法是，btree节点是内部日志结构的；我们可以将新的键附加到现有的btree节点，
+ * 而无需重写它。这意味着我们编写的每一组键都是排序的，但节点不是。
  *
  * We maintain this log structure in memory - keeping 1Mb of keys sorted would
  * be expensive, and we have to distinguish between the keys we have written and
