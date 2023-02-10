@@ -51,7 +51,8 @@ Module.symvers
 Mkfile.old
 dkms.conf
 
+# IDE
+.cache
 compile_commands.json
 user/mdadm-4.2/mdadm
 user/mdadm-4.2/mdmon
-
