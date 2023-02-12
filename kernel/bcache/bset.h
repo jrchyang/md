@@ -7,12 +7,19 @@
  * A bkey contains a key, a size field, a variable number of pointers, and some
  * ancillary flag bits.
  *
+ * 一个bkey包含一个key字段，一个size字段，一个数量可变的指针，以及一些辅助的标记位。
+ *
  * We use two different functions for validating bkeys, bch_ptr_invalid and
  * bch_ptr_bad().
+ *
+ * 我们使用两个不同的函数来验证bkeys：bch_ptr_invalid() 和 bch_ptr_bad()
  *
  * bch_ptr_invalid() primarily filters out keys and pointers that would be
  * invalid due to some sort of bug, whereas bch_ptr_bad() filters out keys and
  * pointer that occur in normal practice but don't point to real data.
+ *
+ * bch_ptr_invalid()主要过滤掉由于某些错误而无效的键和指针，而bch_ptr_bad()则
+ * 过滤掉在正常情况下出现但并不指向真实数据的键和指针。
  *
  * The one exception to the rule that ptr_invalid() filters out invalid keys is
  * that it also filters out keys of size 0 - these are keys that have been
@@ -20,13 +27,23 @@
  * them on disk, just unnecessary work - so we filter them out when resorting
  * instead.
  *
+ * ptr_invalid()过滤掉无效键的一个例外是，它也过滤掉大小为0的键 - 这些是已经被完全
+ * 覆盖的键。在内存中删除这些是安全的，而把他们留在磁盘上，只是不必要的工作 - 所以
+ * 我们在重新排序时反而过滤掉它们。
+ *
  * We can't filter out stale keys when we're resorting, because garbage
  * collection needs to find them to ensure bucket gens don't wrap around -
  * unless we're rewriting the btree node those stale keys still exist on disk.
  *
+ * 我们在重新排序时不能过滤掉陈旧的键，因为垃圾回收需要找到它们，以确保bucket的生成号
+ * 不被包裹 - 除非我们重写btree节点，否则那些陈旧的键仍然存在于磁盘上。
+ *
  * We also implement functions here for removing some number of sectors from the
  * front or the back of a bkey - this is mainly used for fixing overlapping
  * extents, by removing the overlapping sectors from the older key.
+ *
+ * 我们还在这里实现了从bkey的前面或后面删除一些扇区的功能 - 这主要用于修复重叠的
+ * extent，通过从老的key中删除重复的扇区。
  *
  * BSETS:
  *
@@ -34,21 +51,35 @@
  * along with a header. A btree node is made up of a number of these, written at
  * different times.
  *
+ * bset是一个按排序顺序 连续排列在内存中的bkeys数组，同时还有一个头。一个btree节点是
+ * 由许多在不同时间写入的bset/bkey组成的。
+ *
  * There could be many of them on disk, but we never allow there to be more than
  * 4 in memory - we lazily resort as needed.
+ *
+ * 在磁盘上可能有许多，但内存中不超过4个 - 我们根据需要进行重新排序。
  *
  * We implement code here for creating and maintaining auxiliary search trees
  * (described below) for searching an individial bset, and on top of that we
  * implement a btree iterator.
+ *
+ * 我们在这里实现了创建和维护辅助搜索树的代码（如下所述），用于搜索一个单独的bset，
+ * 在此基础上我们实现了一个btree迭代器。
  *
  * BTREE ITERATOR:
  *
  * Most of the code in bcache doesn't care about an individual bset - it needs
  * to search entire btree nodes and iterate over them in sorted order.
  *
+ * bcache的大部分代码并不关心单个的bset - 它需要所搜整个btree节点，并按照排序顺序进行
+ * 迭代
+ *
  * The btree iterator code serves both functions; it iterates through the keys
  * in a btree node in sorted order, starting from either keys after a specific
  * point (if you pass it a search key) or the start of the btree node.
+ *
+ * btree迭代器代码同时具有这两种功能：它以排序的方式便利btree节点中的键，从特定点之后
+ * 的键（如果你传给它一个搜索键）或btree节点的起始位置。
  *
  * AUXILIARY SEARCH TREES:
  *
@@ -56,6 +87,10 @@
  * wouldn't be able to find the start of the next key. But binary searches are
  * slow anyways, due to terrible cache behaviour; bcache originally used binary
  * searches and that code topped out at under 50k lookups/second.
+ *
+ * 因为键的长度是可变的，所以我们不能在一个bset上使用二分查找 - 我们无法找到下一个
+ * 键的开始位置。但是二分查找无论如何都是很慢的，这是因为糟糕的缓存行为；bcache
+ * 最初使用二分查找，那段代码的最高速度低于每秒5万次查找。
  *
  * So we need to construct some sort of lookup table. Since we only insert keys
  * into the last (unwritten) set, most of the keys within a given btree node are

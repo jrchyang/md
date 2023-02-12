@@ -27,9 +27,9 @@
  * a cache set at runtime - while it's mounted and in use. Detaching implicitly
  * invalidates any cached data for that backing device.
  *
- * 备份设备与缓存设备不同，它有独立于缓存集的生命周期。当你注册一个刚刚格式化的备份设备时，
- * 它以透传模式上线，之后你可以从一个正在运行的缓存集上挂载或分离该备份设备，尽管缓存集正在
- * 被使用。分离默认会使该备份设备的缓存数据失效。
+ * 备份设备与缓存设备不同，它有独立于缓存集的生命周期。当你注册一个刚刚格式化的备份设备
+ * 时，它以透传模式上线，之后你可以从一个正在运行的缓存集上挂载或分离该备份设备，
+ * 尽管缓存集正在被使用。分离默认会使该备份设备的缓存数据失效。
  *
  * A cache set can have multiple (many) backing devices attached to it.
  *
@@ -48,7 +48,7 @@
  * Flash only volumes work but they're not production ready because the moving
  * garbage collector needs more work. More on that later.
  *
- * 闪存卷已经可以工作了，但是由于移动垃圾回收还需要更多的工作，因此还不能用于生产环境。
+ * 闪存卷功能可以使用了，但是由于移动垃圾回收还需要更多的工作，因此还不能用于生产环境。
  * 稍后再详细介绍。
  *
  * BUCKETS/ALLOCATION:
@@ -73,9 +73,9 @@
  * packed on disk (in a linked list of buckets - aside from the superblock, all
  * of bcache's metadata is stored in buckets).
  *
- * 每个bucket有一个16位的表示优先级的成员，一个8位的表示生成号的成员。所有bucket的生成号
- * 和优先级连续并打包地存储在磁盘上（bucket以链表方式链接 - 除了超块外，bcache的所有元数据
- * 都存储在bucket中）。
+ * 每个bucket有一个16位的表示优先级的成员，一个8位的表示生成号的成员。所有bucket的
+ * 生成号和优先级连续并打包地存储在磁盘上（bucket以链表方式链接 - 除了超块外，
+ * bcache的所有元数据都存储在bucket中）。
  *
  * The priority is used to implement an LRU. We reset a bucket's priority when
  * we allocate it or on cache it, and every so often we decrement the priority
@@ -91,14 +91,15 @@
  * we have to do is increment its gen (and write its new gen to disk; we batch
  * this up).
  *
- * generation成员用来判断bucket的有效性（使bucket无效）。每个指针中还嵌入了一个8位的生成号。
- * 为了使指针被认为是有效的，它的生成号必须与它指向的bucket的生成号匹配。因此，重用一个bucket
- * 只需要增加它的生成号即可（并且持久化到磁盘上；我们通过批量方式操作）。
+ * generation成员用来判断bucket的有效性（使bucket无效）。每个指针中还嵌入了一个8位的
+ * 生成号。为了使指针被认为是有效的，它的生成号必须与它指向的bucket的生成号匹配。
+ * 因此，重用一个bucket只需要增加它的生成号即可（并且持久化到磁盘上；
+ * 我们通过批量方式操作）。
  *
  * Bcache is entirely COW - we never write twice to a bucket, even buckets that
  * contain metadata (including btree nodes).
  *
- * bcache是完完全全写时复制的 - 一个bucket从不写两次，即使它包含元数据（包括btree节点）。
+ * bcache是完全写时复制的 - 一个bucket从不写两次，即使它包含元数据（包括btree节点）。
  *
  * THE BTREE:
  *
@@ -114,15 +115,16 @@
  * number of pointers attached to them (potentially zero, which is handy for
  * invalidating the cache).
  *
- * keys表示extents，因此具有表示大小的字段。keys还附带了可变数量的指针（潜在的，零表示缓存无效）。
+ * keys表示extents，因此具有表示大小的字段。keys还附带了可变数量的指针
+ * （潜在的，零表示缓存无效）。
  *
  * The key itself is an inode:offset pair. The inode number corresponds to a
  * backing device or a flash only volume. The offset is the ending offset of the
  * extent within the inode - not the starting offset; this makes lookups
  * slightly more convenient.
  *
- * key本身是 inode:offset 对。inode编号对应于备份设备或闪存卷。offset是extent在inode内的
- * 结束位置 - 不是起始位置；这使得查找稍微方便些。
+ * key本身是 inode:offset 对。inode编号对应于备份设备或闪存卷。offset是extent在
+ * inode内的结束位置 - 不是起始位置；这使得查找稍微方便些。
  *
  * Pointers contain the cache device id, the offset on that device, and an 8 bit
  * generation number. More on the gen later.
@@ -161,43 +163,44 @@
  * gen) or by inserting a key with 0 pointers - which will overwrite anything
  * previously present at that location in the index.
  *
- * 没有 delete 操作；从索引中删除东西是通过使指针无效（增加bucket的生成号）或插入0指针的
- * key - 这将覆盖索引中该位置先前存在的任何内容。
+ * 没有 delete 操作；从索引中删除东西是通过使指针无效（增加bucket的生成号）或插入0个
+ * 指针的key - 这将覆盖索引中该位置先前存在的任何内容。
  *
  * This means that there are always stale/invalid keys in the btree. They're
  * filtered out by the code that iterates through a btree node, and removed when
  * a btree node is rewritten.
  *
- * 这意味着btree中总是有过时/无效的键。通过迭代器遍历时会被过滤掉，当重写btree节点时被删除。
+ * 这意味着btree中总是有过时/无效的键。通过迭代器遍历时会被过滤掉，当重写btree节点时
+ * 被删除。
  *
  * BTREE NODES:
  *
  * Our unit of allocation is a bucket, and we we can't arbitrarily allocate and
  * free smaller than a bucket - so, that's how big our btree nodes are.
  *
- * 我们的分配单位是bucket，我们不能任意分配和释放比bucket更小的单位 - 所以，这也是我们
- * 的btree节点的大小。
+ * 我们的分配单位是bucket，因此不能任意分配和释放比bucket更小的单位 - 所以，
+ * 这就是我们的btree节点的大小。
  *
  * (If buckets are really big we'll only use part of the bucket for a btree node
  * - no less than 1/4th - but a bucket still contains no more than a single
  * btree node. I'd actually like to change this, but for now we rely on the
  * bucket's gen for deleting btree nodes when we rewrite/split a node.)
  *
- * （如果bucket真的很大，我们将只为一个btree节点使用部分bucket - 不少于1/4 - 但bucket
- * 仍然只包含一个btree节点。我实际上想改变这一点，但现在我们依赖于bucket的gen在重写/拆分
- * 节点时删除btree节点。
+ * （如果bucket真的很大，我们将只使用bucket的一部分作为btree节点 - 不少于1/4 - 但
+ * 一个bucket仍然只包含不超过一个btree节点。实际上我想改变这一点，但现在我们只能依赖
+ * bucket的生成号来删除btree节点，当我们重写/拆分节点时。）
  *
  * Anyways, btree nodes are big - big enough to be inefficient with a textbook
  * btree implementation.
  *
- * 无论如何，btree节点很大 - 大到足以使教科书式的btree实现效率低下。
+ * 总之，btree节点很大 - 大到足以使教科书式的btree实现效率降低。
  *
  * The way this is solved is that btree nodes are internally log structured; we
  * can append new keys to an existing btree node without rewriting it. This
  * means each set of keys we write is sorted, but the node is not.
  *
- * 解决这一问题的方法是，btree节点是内部日志结构的；我们可以将新的键附加到现有的btree节点，
- * 而无需重写它。这意味着我们编写的每一组键都是排序的，但节点不是。
+ * 解决这一问题的方法是，btree节点在内部是有日志结构的；我们可以向现有的btree节点追加
+ * 新的键，而无需重写它。这意味着我们写的每一组键都是排序的，但节点不是。
  *
  * We maintain this log structure in memory - keeping 1Mb of keys sorted would
  * be expensive, and we have to distinguish between the keys we have written and
@@ -207,9 +210,17 @@
  * will be in one big set, and then there'll be one or two sets that are much
  * smaller).
  *
+ * 我们在内存中维护这个日志结构 - 保持1M的键有序消耗是非常大的，而且我们必须区分已经
+ * 写的键和没有写的键。因此，要在btree节点中进行查找，我们必须搜索每个有序集合。
+ * 但是我们会把已经写完的集合适时的进行合并，所以这些额外的搜索成本是相当低的（通常
+ * 一个btree节点中的大部分键会在一个大集合中，然后会有一到两个小的多的集合）。
+ *
  * This log structure makes bcache's btree more of a hybrid between a
  * conventional btree and a compacting data structure, with some of the
  * advantages of both.
+ *
+ * 这种日志结构使得bcache的btree更像是传统btree和压缩数据结构的混合体，具有两者的
+ * 一些优点。
  *
  * GARBAGE COLLECTION:
  *
@@ -217,14 +228,24 @@
  * metadata. If it once contained dirty data, other writes might overwrite it
  * later, leaving no valid pointers into that bucket in the index.
  *
+ * 我们不能只是让任意bucket失效 - 它可能包含脏数据或元数据。如果它曾经包含脏数据，
+ * 其他写入可能会覆盖它，在索引中没有留下进入该bucket的有效指针。
+ *
  * Thus, the primary purpose of garbage collection is to find buckets to reuse.
  * It also counts how much valid data it each bucket currently contains, so that
  * allocation can reuse buckets sooner when they've been mostly overwritten.
+ *
+ * 因此，垃圾回收的主要目的是找到可以重用的bucket。它还计算每个bucket当前包含多少
+ * 有效数据，以便当bucket大部分被覆盖时，分配器可以更早地重用这些bucket。
  *
  * It also does some things that are really internal to the btree
  * implementation. If a btree node contains pointers that are stale by more than
  * some threshold, it rewrites the btree node to avoid the bucket's generation
  * wrapping around. It also merges adjacent btree nodes if they're empty enough.
+ *
+ * 它也做一些真正属于btree实现内部的事情。如果一个btree节点包含的指针过期的时间超过了
+ * 某个阈值，它就会重写btree节点，以避免bucket的生成号被缠绕。如果相邻的btree节点
+ * 足够空，它还会合并这些节点。
  *
  * THE JOURNAL:
  *
@@ -234,6 +255,10 @@
  * caching (with recovery from unclean shutdown) before journalling was
  * implemented.
  *
+ * bcache的日志对于一致性来说时没有必要的；我们总是严格地安排元数据的写入顺序，以便
+ * 在unclean shutdown情况下，btree和其他一切在磁盘上是一致的。事实上，在实现日志前，
+ * bcache就实现了回写缓存（和从unclean shutdown恢复）的功能。
+ *
  * Rather, the journal is purely a performance optimization; we can't complete a
  * write until we've updated the index on disk, otherwise the cache would be
  * inconsistent in the event of an unclean shutdown. This means that without the
@@ -242,15 +267,28 @@
  * a few keys each) - highly inefficient in terms of amount of metadata writes,
  * and it puts more strain on the various btree resorting/compacting code.
  *
+ * 相反，日志纯粹是一种性能优化；在更新磁盘上的索引之前，我们不能完成一个写请求，否则
+ * 在unclean shutdown时将出现缓存不一致的问题。这意味着，如果没有日志，在随机写的
+ * 工作负载中，我们必须不断的更新btree中的所有叶子节点，而这些写大多是空的（每次最多
+ * 追加几个键）- 就元数据的写入量而言，效率非常低，而且它给各种btree重排序/压缩的代码
+ * 带来了更大的压力。
+ *
  * The journal is just a log of keys we've inserted; on startup we just reinsert
  * all the keys in the open journal entries. That means that when we're updating
  * a node in the btree, we can wait until a 4k block of keys fills up before
  * writing them out.
  *
+ * 日志只是我们已经插入的键的记录，在激活时，我们只是重新插入开放的日志条目中的所有键。
+ * 这意味着，当我们更新btree中的一个节点时，我们可以等一个4K的键块填满后再把它写出来。
+ *
  * For simplicity, we only journal updates to leaf nodes; updates to parent
  * nodes are rare enough (since our leaf nodes are huge) that it wasn't worth
  * the complexity to deal with journalling them (in particular, journal replay)
  * - updates to non leaf nodes just happen synchronously (see btree_split()).
+ *
+ * 为简单起见，我们只记录叶子节点的更新；父节点的更新非常罕见（因为我们的叶子节点非常
+ * 大），所以不值得为其记录（尤其是日志重放）而更加复杂 - 非叶子节点的更新只是同步发生
+ * 的（见 btree_split()）。
  */
 
 #define pr_fmt(fmt) "bcache: %s() " fmt "\n", __func__
